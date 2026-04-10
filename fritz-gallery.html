@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fritz Gallery</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0A0A0F;color:#eee;font-family:'Instrument Sans',sans-serif;min-height:100vh}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid #1c1c28;position:sticky;top:0;background:#0A0A0F;z-index:10}
+  .topbar .logo{font-size:14px;font-weight:700;color:#555;letter-spacing:0.15em;text-transform:uppercase}
+  .topbar h1{font-size:20px;font-weight:700;letter-spacing:0.06em}
+  .topbar .count{font-family:'JetBrains Mono',monospace;font-size:11px;color:#666;margin-left:8px}
+  .actions{display:flex;gap:8px;align-items:center}
+  .sm-btn{font-family:'JetBrains Mono',monospace;font-size:10px;padding:7px 14px;background:#1a1a26;color:#666;border:1px solid #2a2a36;border-radius:4px;cursor:pointer;letter-spacing:0.06em;text-transform:uppercase;transition:all 0.15s;text-decoration:none}
+  .sm-btn:hover{background:#2a2a36;color:#aaa}
+  .sm-btn.danger{border-color:#E8457A33;color:#E8457A88}
+  .sm-btn.danger:hover{background:#E8457A22;color:#E8457A;border-color:#E8457A}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;padding:24px}
+
+  .card{background:#12121e;border:1px solid #1c1c28;border-radius:10px;overflow:hidden;transition:transform 0.15s,border-color 0.15s;cursor:pointer;position:relative}
+  .card:hover{transform:translateY(-2px);border-color:#2a2a3a}
+
+  .card img{width:100%;display:block;background:#0A0A0F}
+
+  .card-meta{padding:12px 14px;display:flex;align-items:center;justify-content:space-between}
+  .card-name{font-size:14px;font-weight:700;color:#ddd;letter-spacing:0.02em}
+  .card-name.anon{color:#555;font-style:italic;font-weight:400}
+  .card-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:#444}
+  .card-del{position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;background:rgba(10,10,15,0.8);border:1px solid #2a2a36;color:#666;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.15s}
+  .card:hover .card-del{opacity:1}
+  .card-del:hover{background:#E8457A33;color:#E8457A;border-color:#E8457A}
+
+  .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;color:#444}
+  .empty h2{font-size:24px;font-weight:700;color:#555}
+  .empty p{font-size:14px}
+  .empty a{color:#FF00E5;text-decoration:none;font-weight:600}
+  .empty a:hover{text-decoration:underline}
+
+  /* Lightbox */
+  .lightbox{position:fixed;inset:0;background:rgba(5,5,10,0.92);z-index:100;display:none;align-items:center;justify-content:center;cursor:pointer}
+  .lightbox.open{display:flex}
+  .lightbox img{max-width:90vw;max-height:85vh;border-radius:8px;border:1px solid #2a2a36}
+  .lightbox-info{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);font-size:13px;color:#888;font-weight:500;letter-spacing:0.03em}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div style="display:flex;align-items:baseline;gap:4px">
+    <span class="logo">Fritz</span>
+    <h1>Gallery</h1>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="actions">
+    <a href="fritz-me.html" class="sm-btn">Fritz Me</a>
+    <button class="sm-btn danger" id="btn-clear" onclick="clearGallery()">Clear All</button>
+  </div>
+</div>
+
+<div class="grid" id="grid"></div>
+<div class="empty" id="empty" style="display:none">
+  <h2>No Fritzoids Yet</h2>
+  <p>Go create some.</p>
+  <a href="fritz-me.html">Open Fritz Me →</a>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lb-img" src="">
+  <div class="lightbox-info" id="lb-info"></div>
+</div>
+
+<script>
+function loadGallery() {
+  return JSON.parse(localStorage.getItem('fritz-gallery') || '[]');
+}
+
+function renderGallery() {
+  const items = loadGallery();
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('empty');
+  const count = document.getElementById('count');
+
+  count.textContent = items.length ? `(${items.length})` : '';
+
+  if (!items.length) {
+    grid.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  grid.innerHTML = items.map((item, i) => {
+    const name = item.name || '';
+    const displayName = name || 'Untitled';
+    const nameClass = name ? 'card-name' : 'card-name anon';
+    const date = new Date(item.ts);
+    const timeStr = date.toLocaleDateString('en-US', {month:'short',day:'numeric'}) + ' ' +
+                    date.toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
+    return `
+      <div class="card" onclick="openLightbox(${i})">
+        <img src="${item.thumb}" alt="${displayName}" loading="lazy">
+        <div class="card-meta">
+          <div class="${nameClass}">${displayName}</div>
+          <div class="card-time">${timeStr}</div>
+        </div>
+        <div class="card-del" onclick="event.stopPropagation();deleteItem(${i})" title="Remove">×</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function deleteItem(idx) {
+  const items = loadGallery();
+  items.splice(idx, 1);
+  localStorage.setItem('fritz-gallery', JSON.stringify(items));
+  renderGallery();
+}
+
+function clearGallery() {
+  if (!confirm('Delete all fritzoids from the gallery?')) return;
+  localStorage.removeItem('fritz-gallery');
+  renderGallery();
+}
+
+function openLightbox(idx) {
+  const items = loadGallery();
+  const item = items[idx];
+  if (!item) return;
+  document.getElementById('lb-img').src = item.thumb;
+  const name = item.name || 'Untitled';
+  document.getElementById('lb-info').textContent = name;
+  document.getElementById('lightbox').classList.add('open');
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeLightbox();
+});
+
+renderGallery();
+</script>
+</body>
+</html>

@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fritz Me</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0A0A0F;display:flex;flex-direction:column;height:100vh;overflow:hidden;font-family:'JetBrains Mono',monospace}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:#0A0A0F;z-index:10;flex-shrink:0}
+  .topbar .logo{font-family:'Instrument Sans',sans-serif;font-size:13px;font-weight:700;color:#444;letter-spacing:0.15em;text-transform:uppercase}
+  .fritz-btn{font-family:'Instrument Sans',sans-serif;font-size:14px;font-weight:700;padding:10px 32px;background:#FF00E5;color:#0A0A0F;border:none;border-radius:6px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;transition:all 0.15s}
+  .fritz-btn:hover{background:#ff33ea;transform:translateY(-1px)}
+  .fritz-btn:active{transform:translateY(0)}
+  .actions{display:flex;gap:8px;align-items:center}
+  .sm-btn{font-family:'JetBrains Mono',monospace;font-size:10px;padding:7px 14px;background:#1a1a26;color:#666;border:1px solid #2a2a36;border-radius:4px;cursor:pointer;letter-spacing:0.06em;text-transform:uppercase;transition:all 0.15s}
+  .sm-btn:hover{background:#2a2a36;color:#aaa}
+  .gallery-btn{font-family:'Instrument Sans',sans-serif;font-size:11px;font-weight:600;padding:8px 18px;background:transparent;color:#00D862;border:1px solid #00D862;border-radius:6px;cursor:pointer;letter-spacing:0.06em;text-transform:uppercase;transition:all 0.15s}
+  .gallery-btn:hover{background:#00D862;color:#0A0A0F}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#00D862;color:#0A0A0F;font-family:'Instrument Sans',sans-serif;font-size:13px;font-weight:600;padding:10px 24px;border-radius:6px;opacity:0;transition:opacity 0.3s;pointer-events:none;z-index:100}
+  .toast.show{opacity:1}
+  .name-input{font-family:'Instrument Sans',sans-serif;font-size:13px;font-weight:700;padding:8px 14px;background:#1a1a26;color:#eee;border:1px solid #2a2a36;border-radius:6px;width:160px;letter-spacing:0.03em;outline:none;transition:border-color 0.15s}
+  .name-input:focus{border-color:#FF00E5}
+  .name-input::placeholder{color:#444;font-weight:400}
+  .wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  canvas{display:block}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">Fritz</div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <input type="text" class="name-input" id="name-input" placeholder="Your name" maxlength="24" oninput="render()">
+    <select class="name-input" id="name-side" style="width:auto;padding:8px 10px" onchange="render()">
+      <option value="left">Name Left</option>
+      <option value="right">Name Right</option>
+    </select>
+    <button class="fritz-btn" id="btn-fritz" onclick="fritzMe()">Fritz Me</button>
+  </div>
+  <div class="actions">
+    <button class="gallery-btn" onclick="addToGallery()">Add to Gallery</button>
+    <a href="fritz-gallery.html" class="sm-btn" style="text-decoration:none">View Gallery</a>
+    <button class="sm-btn" onclick="exportPNG()">Save PNG</button>
+    <button class="sm-btn" onclick="exportSVG()">Save SVG</button>
+  </div>
+</div>
+<div class="toast" id="toast">Added to gallery!</div>
+<div class="wrap" id="wrap"><canvas id="c"></canvas></div>
+
+<script>
+const C = document.getElementById('c'), X = C.getContext('2d'), wrap = document.getElementById('wrap');
+let W, H, seed = Math.random() * 1e4;
+
+const PAL = {
+  fritz: ['#FF00E5','#00D862','#1A7AFF'],
+  cyber: ['#A855F7','#22D3EE','#6366F1'],
+  heat: ['#FF3333','#FF8800','#FFCC00'],
+  neon: ['#FF2D9B','#00D4FF','#FF6B35'],
+  intercept: ['#E54D2E','#3B82F6','#8B5CF6'],
+  mono: ['#FFFFFF','#999999','#444444'],
+  acid: ['#00FF66','#88FF00','#00FFAA'],
+};
+
+const FILLS = ['#FF00E5','#FF00E5','#1A7AFF','#1A7AFF','#00D862','#00D862','#FFFFFF'];
+const TEXTURES = ['none','none','none','crosshatch','halftone','noise','static','vhs','corrupted'];
+const DIRS = ['h','h','v','both'];
+const SLI_COLORS = ['channel','channel','channel','#FF00E5','#00D862','#1A7AFF','#FFFFFF'];
+const BLK_COLORS = ['channel','channel','#FF00E5','#00D862','#1A7AFF','#FFFFFF'];
+const PAL_KEYS = Object.keys(PAL);
+const BGS = ['#0A0A0F','#0A0A0F','#0A0A0F','#000000','#1A0A2E'];
+
+function ns(x,y,s){const a=Math.sin(x*12.9898+y*78.233+s)*43758.5453;return a-Math.floor(a)}
+function rng(){return Math.random()}
+function rngR(a,b){return a+rng()*(b-a)}
+function pick(arr){return arr[Math.floor(rng()*arr.length)]}
+
+function resize(){
+  const r=devicePixelRatio||1;W=wrap.clientWidth;H=wrap.clientHeight;
+  C.style.width=W+'px';C.style.height=H+'px';C.width=W*r;C.height=H*r;
+  X.setTransform(r,0,0,r,0,0);
+}
+window.addEventListener('resize',()=>{resize();render()});resize();
+
+// Current state
+let S = {};
+
+function randomize() {
+  seed = Math.random() * 1e4;
+  S = {
+    dir: pick(['left','right']),
+    size: rngR(0.45, 0.75),
+    fill: pick(FILLS),
+    bg: pick(BGS),
+    pal: pick(PAL_KEYS),
+    // Channel split — fixed offset
+    chOffset: 5,
+    chAlpha: rngR(0.3, 0.9),
+    // Slices — max 3, horizontal only
+    sliCount: Math.floor(rngR(1, 4)),
+    sliH: Math.floor(rngR(6, 70)),
+    sliGap: Math.floor(rngR(0, 25)),
+    sliMax: rngR(20, 180),
+    sliAlpha: rngR(0.4, 1.0),
+    sliDir: 'h',
+    sliColor: pick(SLI_COLORS),
+    // Blocks — locked count 2-3, randomize the rest
+    blkCount: Math.floor(rngR(2, 4)),
+    blkMin: rngR(8, 40),
+    blkMax: rngR(40, 150),
+    blkShape: rngR(0, 1),
+    blkShift: rngR(20, 150),
+    blkAlpha: rngR(0.4, 0.9),
+    blkColor: pick(BLK_COLORS),
+    // Texture
+    tex: pick(TEXTURES),
+    texD: rngR(0.15, 0.9),
+    texA: rngR(0.05, 0.4),
+    // No dupe echo, no offset
+    dupe: 0,
+    offX: 0,
+    offY: 0,
+  };
+}
+
+// Triangle vertices
+function tri(cx, cy, sz, dir) {
+  const h = sz, w = sz * 0.85;
+  if (dir === 'right') {
+    return [[cx-w/2,cy-h/2],[cx-w/2,cy+h/2],[cx+w/2,cy+h/2]];
+  } else {
+    return [[cx+w/2,cy-h/2],[cx+w/2,cy+h/2],[cx-w/2,cy+h/2]];
+  }
+}
+
+function drawTri(pts, color, alpha) {
+  X.save(); X.globalAlpha = alpha;
+  X.beginPath(); X.moveTo(pts[0][0],pts[0][1]); X.lineTo(pts[1][0],pts[1][1]); X.lineTo(pts[2][0],pts[2][1]); X.closePath();
+  X.fillStyle = color; X.fill(); X.restore();
+}
+
+function drawTriClipped(pts, color, clipY, clipH, shiftX) {
+  X.save();
+  X.beginPath(); X.rect(-W, clipY, W*3, clipH); X.clip();
+  const s = pts.map(p=>[p[0]+shiftX,p[1]]);
+  X.beginPath(); X.moveTo(s[0][0],s[0][1]); X.lineTo(s[1][0],s[1][1]); X.lineTo(s[2][0],s[2][1]); X.closePath();
+  X.fillStyle = color; X.fill(); X.restore();
+}
+
+function render() {
+  const bg = S.bg;
+  const ch = PAL[S.pal] || PAL.fritz;
+
+  // Compute lockup size — if name is present, scale everything so it fits
+  const nameVal = document.getElementById('name-input').value.trim();
+  let sz = S.size * Math.min(W, H) * 0.8;
+
+  const nameSide = document.getElementById('name-side').value;
+
+  if (nameVal) {
+    // Font at 82% of triangle height
+    const desiredFontSize = sz * 0.82;
+    X.font = '700 ' + desiredFontSize + 'px "Instrument Sans", sans-serif';
+    X.letterSpacing = (-desiredFontSize * 0.04) + 'px';
+    const nameW = X.measureText(nameVal).width;
+    const triW = sz * 0.85;
+    const gap = sz * 0.14;
+    const totalLockupW = nameW + gap + triW;
+    const maxW = W * 0.9;
+
+    if (totalLockupW > maxW) {
+      sz *= maxW / totalLockupW;
+    }
+  }
+
+  const cx = W/2, cy = H/2;
+  let pts;
+
+  if (nameVal) {
+    const triH = sz;
+    const triW = sz * 0.85;
+    const fontSize = triH * 0.82;
+    X.font = '700 ' + fontSize + 'px "Instrument Sans", sans-serif';
+    X.letterSpacing = (-fontSize * 0.04) + 'px';
+    const nameW = X.measureText(nameVal).width;
+    const gap = triH * 0.14;
+    const totalW = nameW + gap + triW;
+    const lockupLeft = cx - totalW / 2;
+
+    let triCx;
+    if (nameSide === 'left') {
+      // Name on left, triangle on right
+      triCx = lockupLeft + nameW + gap + triW / 2;
+    } else {
+      // Triangle on left, name on right
+      triCx = lockupLeft + triW / 2;
+    }
+    pts = tri(triCx, cy, sz, S.dir);
+  } else {
+    pts = tri(cx, cy, sz, S.dir);
+  }
+
+  wrap.style.background = bg;
+  X.fillStyle = bg; X.fillRect(0, 0, W, H);
+
+  // Channel split
+  if (S.chOffset > 3) {
+    const ox = S.chOffset, oy = S.chOffset * 0.25;
+    X.save(); X.globalCompositeOperation = 'screen';
+    drawTri(pts.map(p=>[p[0]-ox,p[1]-oy]), ch[0], S.chAlpha);
+    X.restore();
+    X.save(); X.globalCompositeOperation = 'screen';
+    drawTri(pts.map(p=>[p[0]+ox*0.8,p[1]+oy*0.5]), ch[1], S.chAlpha * 0.85);
+    X.restore();
+    X.save(); X.globalCompositeOperation = 'screen';
+    drawTri(pts.map(p=>[p[0]+ox*0.2,p[1]-oy*1.5]), ch[2], S.chAlpha * 0.6);
+    X.restore();
+  }
+
+  // Main triangle
+  drawTri(pts, S.fill, 1);
+
+  // Texture inside triangle
+  if (S.tex !== 'none' && S.texA > 0) {
+    X.save();
+    X.beginPath(); X.moveTo(pts[0][0],pts[0][1]); X.lineTo(pts[1][0],pts[1][1]); X.lineTo(pts[2][0],pts[2][1]); X.closePath(); X.clip();
+    X.globalAlpha = S.texA;
+    const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
+    const left = Math.min(...xs), right = Math.max(...xs), top = Math.min(...ys), bot = Math.max(...ys);
+    const tw = right-left, th = bot-top;
+
+    if (S.tex === 'noise') {
+      const step = Math.max(2, Math.round(8-S.texD*5));
+      for(let y=top;y<bot;y+=step)for(let x=left-20;x<right+20;x+=step){
+        const n=ns(x*0.3,y*0.3,seed+900);
+        if(n>0.5){X.fillStyle=n>0.75?'#000':'#FFF';X.globalAlpha=S.texA*(0.5+n*0.5);X.fillRect(x,y,step-1,step-1);}
+      }
+    } else if (S.tex === 'crosshatch') {
+      const gap = Math.max(4, Math.round(16-S.texD*12));
+      X.strokeStyle='#000';X.lineWidth=1;X.beginPath();
+      for(let i=-th;i<tw+th;i+=gap){X.moveTo(left+i,top);X.lineTo(left+i-th,bot);X.moveTo(left+i,top);X.lineTo(left+i+th,bot);}
+      X.stroke();
+    } else if (S.tex === 'halftone') {
+      const gap = Math.max(4, Math.round(14-S.texD*10));
+      const r = gap*0.3*S.texD;
+      X.fillStyle='#000';
+      for(let y=top;y<bot;y+=gap)for(let x=left-20;x<right+20;x+=gap){X.beginPath();X.arc(x,y,r,0,Math.PI*2);X.fill();}
+    } else if (S.tex === 'static') {
+      const step = Math.max(2, Math.round(6-S.texD*4));
+      for(let y=top;y<bot;y+=step)for(let x=left-20;x<right+20;x+=step){
+        const n=ns(x+seed*0.1,y+seed*0.07,seed+1000);
+        X.fillStyle=n>0.5?'#FFF':'#000';X.globalAlpha=S.texA*n;X.fillRect(x,y,step,step);
+      }
+    } else if (S.tex === 'vhs') {
+      const bandH = Math.max(6, Math.round(30-S.texD*20));
+      for(let y=top;y<bot;y+=bandH){
+        const n=ns(y*0.1,0,seed+1100);
+        if(n>0.6){const shift=(n-0.5)*S.texD*60;X.fillStyle=n>0.8?'#FFF':'#000';X.globalAlpha=S.texA*0.7;X.fillRect(left-20+shift,y,tw+40,bandH*0.4);}
+      }
+    } else if (S.tex === 'corrupted') {
+      const step = Math.max(3, Math.round(10-S.texD*7));
+      for(let y=top;y<bot;y+=step*2){
+        const rowN=ns(y,0,seed+1200);
+        if(rowN>0.65){const shift=(rowN-0.5)*S.texD*40;X.fillStyle=ch[Math.floor(rowN*3)%3];X.globalAlpha=S.texA*0.8;X.fillRect(left-20+shift,y,tw+40,step);}
+      }
+    }
+    X.restore();
+  }
+
+  // Slice displacement
+  if (S.sliCount > 0) {
+    const triYs = pts.map(p=>p[1]), triXs = pts.map(p=>p[0]);
+    const triTop = Math.min(...triYs), triBot = Math.max(...triYs);
+    const triL = Math.min(...triXs), triR = Math.max(...triXs);
+    const triH = triBot-triTop, triW = triR-triL;
+
+    if (S.sliDir === 'h' || S.sliDir === 'both') {
+      for(let i=0;i<S.sliCount;i++){
+        const posN=ns(i,0,seed+100);
+        const thickN=ns(i,1,seed+130);
+        const y=triTop+posN*triH*0.9;
+        const thisH=S.sliH*(0.5+thickN);
+        const shift=(ns(i,2,seed+160)-0.5)*S.sliMax;
+        const col=S.sliColor==='channel'?ch[i%3]:S.sliColor;
+        X.save();X.globalCompositeOperation='screen';X.globalAlpha=S.sliAlpha;
+        drawTriClipped(pts,col,y,thisH,shift);
+        X.restore();
+        X.save();X.fillStyle=bg;X.fillRect(0,y+thisH,W,S.sliGap);X.restore();
+      }
+    }
+    if (S.sliDir === 'v' || S.sliDir === 'both') {
+      for(let i=0;i<S.sliCount;i++){
+        const posN=ns(i+50,0,seed+150);
+        const thickN=ns(i+50,1,seed+180);
+        const x=triL+posN*triW*0.9;
+        const thisW=S.sliH*(0.5+thickN);
+        const shift=(ns(i+50,2,seed+210)-0.5)*S.sliMax;
+        const col=S.sliColor==='channel'?ch[(i+1)%3]:S.sliColor;
+        X.save();
+        X.beginPath();X.rect(x,-H,thisW,H*3);X.clip();
+        X.globalCompositeOperation='screen';X.globalAlpha=S.sliAlpha;
+        const s=pts.map(p=>[p[0],p[1]+shift]);
+        X.beginPath();X.moveTo(s[0][0],s[0][1]);X.lineTo(s[1][0],s[1][1]);X.lineTo(s[2][0],s[2][1]);X.closePath();
+        X.fillStyle=col;X.fill();
+        X.restore();
+        X.save();X.fillStyle=bg;X.fillRect(x+thisW,0,S.sliGap,H);X.restore();
+      }
+    }
+  }
+
+  // Block glitch — locked count (2-3)
+  if (S.blkCount > 0) {
+    const triYs = pts.map(p=>p[1]), triXs = pts.map(p=>p[0]);
+    const triTop = Math.min(...triYs), triBot = Math.max(...triYs);
+    const triL = Math.min(...triXs), triR = Math.max(...triXs);
+
+    for(let i=0;i<S.blkCount;i++){
+      const bx=triL+ns(i,0,seed+200)*(triR-triL);
+      const by=triTop+ns(i,1,seed+300)*(triBot-triTop)*0.8;
+      const sizeFactor=ns(i,2,seed+400);
+      const baseSize=S.blkMin+sizeFactor*(S.blkMax-S.blkMin);
+      const aspectRatio=1-S.blkShape*0.8;
+      const bw=baseSize;
+      const bh=baseSize*(aspectRatio+ns(i,3,seed+500)*(1-aspectRatio)*0.5);
+      const shift=(ns(i,4,seed+600)-0.5)*S.blkShift;
+      const blkCol=S.blkColor==='channel'?ch[i%3]:S.blkColor;
+      const blkCol2=S.blkColor==='channel'?ch[(i+1)%3]:S.blkColor;
+
+      X.save();X.globalCompositeOperation='screen';X.globalAlpha=S.blkAlpha;
+      X.fillStyle=blkCol;X.fillRect(bx+shift,by,bw,bh);X.restore();
+
+      X.save();
+      X.beginPath();X.rect(bx,by,bw,bh);X.clip();
+      X.globalCompositeOperation='screen';X.globalAlpha=S.blkAlpha*0.7;
+      drawTri(pts.map(p=>[p[0]+shift*0.5,p[1]]),blkCol2,S.blkAlpha*0.7);
+      X.restore();
+    }
+  }
+
+  // Name lockup
+  if (nameVal) {
+    const triH = sz;
+    const fontSize = triH * 0.82;
+    const gap = triH * 0.14;
+
+    const triXs = pts.map(p => p[0]);
+    const triLeft = Math.min(...triXs);
+    const triRight = Math.max(...triXs);
+    const triBot = Math.max(...pts.map(p => p[1]));
+
+    X.font = '700 ' + fontSize + 'px "Instrument Sans", sans-serif';
+    X.letterSpacing = (-fontSize * 0.04) + 'px';
+    const nameW = X.measureText(nameVal).width;
+
+    let nameX;
+    const nameY = triBot;
+
+    if (nameSide === 'left') {
+      nameX = triLeft - gap - nameW;
+    } else {
+      nameX = triRight + gap;
+    }
+
+    X.save();
+    X.font = '700 ' + fontSize + 'px "Instrument Sans", sans-serif';
+    X.textBaseline = 'alphabetic';
+    X.letterSpacing = (-fontSize * 0.04) + 'px'; // tight, almost touching
+
+    // Subtle channel misregister
+    const mis = Math.max(1, fontSize * 0.015);
+    X.globalAlpha = 0.25;
+    X.fillStyle = ch[0];
+    X.fillText(nameVal, nameX - mis, nameY - mis * 0.3);
+    X.globalAlpha = 0.2;
+    X.fillStyle = ch[1];
+    X.fillText(nameVal, nameX + mis * 0.7, nameY + mis * 0.2);
+
+    X.globalAlpha = 1;
+    X.fillStyle = '#FFFFFF';
+    X.fillText(nameVal, nameX, nameY);
+    X.restore();
+  }
+
+  // Duplicate echo (disabled)
+  if (S.dupe > 0.01) {
+    const d = S.dupe * 80;
+    X.save();X.globalAlpha=0.35;
+    drawTri(pts.map(p=>[p[0]+d,p[1]+d*0.2]),S.fill,0.35);
+    X.restore();
+    X.save();X.globalAlpha=0.2;
+    drawTri(pts.map(p=>[p[0]+d*1.8,p[1]+d*0.4]),S.fill,0.2);
+    X.restore();
+    X.save();X.globalCompositeOperation='screen';X.globalAlpha=0.3;
+    drawTri(pts.map(p=>[p[0]-d*0.5,p[1]-d*0.3]),ch[0],0.3);
+    X.restore();
+  }
+}
+
+function fritzMe() {
+  randomize();
+  render();
+  // Subtle button flash
+  const btn = document.getElementById('btn-fritz');
+  btn.style.background = pick(['#FF00E5','#00D862','#1A7AFF']);
+  setTimeout(() => btn.style.background = '#FF00E5', 150);
+}
+
+function exportPNG() {
+  const a = document.createElement('a');
+  a.download = 'fritz-' + Date.now() + '.png';
+  a.href = C.toDataURL('image/png');
+  a.click();
+}
+
+function exportSVG() {
+  // Re-render as SVG
+  const bg = S.bg;
+  const ch = PAL[S.pal] || PAL.fritz;
+  const sz = S.size * Math.min(W, H) * 0.8;
+  const cx = W/2 + S.offX, cy = H/2 + S.offY;
+  const h = sz, w = sz * 0.85;
+  let pts;
+  if (S.dir === 'right') {
+    pts = [[cx-w/2,cy-h/2],[cx-w/2,cy+h/2],[cx+w/2,cy+h/2]];
+  } else {
+    pts = [[cx+w/2,cy-h/2],[cx+w/2,cy+h/2],[cx-w/2,cy+h/2]];
+  }
+  const triPath = pts.map(p=>p.join(',')).join(' ');
+
+  let layers = '';
+  layers += `<g id="bg"><rect width="${W}" height="${H}" fill="${bg}"/></g>\n`;
+
+  // Channel ghosts
+  if (S.chOffset > 3) {
+    const ox = S.chOffset, oy = S.chOffset * 0.25;
+    layers += `<g id="channel-ghosts" style="mix-blend-mode:screen">\n`;
+    layers += `  <polygon points="${pts.map(p=>[p[0]-ox,p[1]-oy].join(',')).join(' ')}" fill="${ch[0]}" opacity="${S.chAlpha}"/>\n`;
+    layers += `  <polygon points="${pts.map(p=>[p[0]+ox*0.8,p[1]+oy*0.5].join(',')).join(' ')}" fill="${ch[1]}" opacity="${(S.chAlpha*0.85).toFixed(2)}"/>\n`;
+    layers += `  <polygon points="${pts.map(p=>[p[0]+ox*0.2,p[1]-oy*1.5].join(',')).join(' ')}" fill="${ch[2]}" opacity="${(S.chAlpha*0.6).toFixed(2)}"/>\n`;
+    layers += `</g>\n`;
+  }
+
+  layers += `<g id="main-triangle"><polygon points="${triPath}" fill="${S.fill}"/></g>\n`;
+
+  // Blocks
+  if (S.blkCount > 0) {
+    const triYs = pts.map(p=>p[1]), triXs = pts.map(p=>p[0]);
+    const triTop = Math.min(...triYs), triBot = Math.max(...triYs);
+    const triL = Math.min(...triXs), triR = Math.max(...triXs);
+    layers += `<g id="blocks" style="mix-blend-mode:screen">\n`;
+    for(let i=0;i<S.blkCount;i++){
+      const bx=triL+ns(i,0,seed+200)*(triR-triL);
+      const by=triTop+ns(i,1,seed+300)*(triBot-triTop)*0.8;
+      const sizeFactor=ns(i,2,seed+400);
+      const baseSize=S.blkMin+sizeFactor*(S.blkMax-S.blkMin);
+      const aspectRatio=1-S.blkShape*0.8;
+      const bw=baseSize;
+      const bh=baseSize*(aspectRatio+ns(i,3,seed+500)*(1-aspectRatio)*0.5);
+      const shift=(ns(i,4,seed+600)-0.5)*S.blkShift;
+      const col=S.blkColor==='channel'?ch[i%3]:S.blkColor;
+      layers += `  <rect x="${(bx+shift).toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" fill="${col}" opacity="${S.blkAlpha}"/>\n`;
+    }
+    layers += `</g>\n`;
+  }
+
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">\n${layers}</svg>`;
+  const blob = new Blob([svg], {type:'image/svg+xml'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'fritz-' + Date.now() + '.svg';
+  a.click(); URL.revokeObjectURL(url);
+}
+
+// Init — generate first fritz on load
+randomize();
+requestAnimationFrame(() => render());
+
+function addToGallery() {
+  // Render a thumbnail
+  const thumbW = 480, thumbH = Math.round(480 * H / W);
+  const tc = document.createElement('canvas');
+  tc.width = thumbW; tc.height = thumbH;
+  const tx = tc.getContext('2d');
+  tx.drawImage(C, 0, 0, thumbW, thumbH);
+  const thumb = tc.toDataURL('image/png', 0.85);
+
+  const entry = {
+    id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    name: document.getElementById('name-input').value.trim(),
+    nameSide: document.getElementById('name-side').value,
+    state: JSON.parse(JSON.stringify(S)),
+    seed: seed,
+    thumb: thumb,
+    ts: new Date().toISOString(),
+  };
+
+  const gallery = JSON.parse(localStorage.getItem('fritz-gallery') || '[]');
+  gallery.unshift(entry);
+  // Keep max 200
+  if (gallery.length > 200) gallery.length = 200;
+  localStorage.setItem('fritz-gallery', JSON.stringify(gallery));
+
+  // Toast
+  const toast = document.getElementById('toast');
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 1500);
+}
+
+// Spacebar also triggers
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); fritzMe(); }
+});
+</script>
+</body>
+</html>
