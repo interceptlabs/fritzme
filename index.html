@@ -24,13 +24,31 @@
   .name-input:focus{border-color:#FF00E5}
   .name-input::placeholder{color:#444;font-weight:400}
   .wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden}
-  canvas{display:block}
+  canvas{display:block;touch-action:none}
+
+  /* Mobile */
+  @media (max-width: 700px) {
+    .topbar{flex-wrap:wrap;gap:8px;padding:10px 12px}
+    .topbar .logo{display:none}
+    .topbar .controls{width:100%;display:flex;gap:8px;align-items:center}
+    .name-input{flex:1;min-width:0;width:auto;font-size:12px;padding:8px 10px}
+    .fritz-btn{font-size:12px;padding:9px 20px;white-space:nowrap}
+    .actions{width:100%;justify-content:center;flex-wrap:wrap;gap:6px}
+    .actions > *{font-size:9px;padding:6px 10px}
+    .gallery-btn{font-size:10px;padding:7px 14px}
+  }
+
+  @media (max-width: 420px) {
+    .topbar .controls{flex-wrap:wrap}
+    .name-input{flex:1 1 40%;font-size:11px;padding:7px 8px}
+    .fritz-btn{flex:1 1 auto;font-size:11px;padding:8px 16px}
+  }
 </style>
 </head>
 <body>
 <div class="topbar">
   <div class="logo">Fritz</div>
-  <div style="display:flex;gap:10px;align-items:center">
+  <div class="controls" style="display:flex;gap:10px;align-items:center">
     <input type="text" class="name-input" id="name-input" placeholder="Your name" maxlength="24" oninput="render()">
     <select class="name-input" id="name-side" style="width:auto;padding:8px 10px" onchange="render()">
       <option value="left">Name Left</option>
